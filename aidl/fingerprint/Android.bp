@@ -1,0 +1,34 @@
+cc_binary {
+    name: "android.hardware.biometrics.fingerprint-service.xiaomi",
+    vendor: true,
+    relative_install_path: "hw",
+    init_rc: ["fingerprint-xiaomi.rc"],
+    vintf_fragments: ["fingerprint-xiaomi.xml"],
+    local_include_dirs: ["include"],
+    srcs: [
+        "FakeLockoutTracker.cpp",
+        "FakeFingerprintEngine.cpp",
+        "FakeFingerprintEngineRear.cpp",
+        "FakeFingerprintEngineUdfps.cpp",
+        "FakeFingerprintEngineSide.cpp",
+        "Fingerprint.cpp",
+        "Session.cpp",
+        "main.cpp",
+    ],
+    shared_libs: [
+        "libbase",
+        "libbinder_ndk",
+        "android.hardware.biometrics.fingerprint-V4-ndk",
+        "android.hardware.biometrics.common-V4-ndk",
+        "android.hardware.biometrics.common.thread",
+        "android.hardware.biometrics.common.util",
+    ],
+    static_libs: ["libandroid.hardware.biometrics.fingerprint.XiaomiProps"],
+}
+
+sysprop_library {
+    name: "android.hardware.biometrics.fingerprint.XiaomiProps",
+    srcs: ["fingerprint.sysprop"],
+    property_owner: "Vendor",
+    vendor: true,
+}
