@@ -12,6 +12,7 @@ cc_binary {
         "FakeFingerprintEngineUdfps.cpp",
         "FakeFingerprintEngineSide.cpp",
         "Fingerprint.cpp",
+        "Load.cpp"
         "Session.cpp",
         "main.cpp",
     ],

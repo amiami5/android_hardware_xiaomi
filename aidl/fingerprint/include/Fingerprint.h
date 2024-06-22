@@ -9,6 +9,7 @@
 
 #include <aidl/android/hardware/biometrics/fingerprint/BnFingerprint.h>
 
+#include "Load.h"
 #include "FakeFingerprintEngine.h"
 #include "FakeFingerprintEngineRear.h"
 #include "FakeFingerprintEngineSide.h"

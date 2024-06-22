@@ -33,7 +33,15 @@ constexpr char SW_VERSION[] = "vendor/version/revision";
 
 }  // namespace
 
+static Fingerprint* sInstance;
+
 Fingerprint::Fingerprint() : mWorker(MAX_WORKER_QUEUE_SIZE) {
+    sInstance = this; // keep track of the most recent instance
+    mDevice = openHal(Fingerprint::notify);
+    if (!mDevice) {
+        LOG(ERROR) << "Can't open HAL module";
+    }
+
     std::string sensorTypeProp = FingerprintHalProperties::type().value_or("");
     if (sensorTypeProp == "" || sensorTypeProp == "default" || sensorTypeProp == "rear") {
         mSensorType = FingerprintSensorType::REAR;
