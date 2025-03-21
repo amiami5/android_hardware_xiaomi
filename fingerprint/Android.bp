@@ -17,6 +17,7 @@ cc_library_headers {
     vendor: true,
     header_libs: ["libhardware_headers"],
     export_header_lib_headers: ["libhardware_headers"],
+    defaults: ["xiaomi_hardware_biometrics_config_default"],
 }
 
 cc_library_static {
