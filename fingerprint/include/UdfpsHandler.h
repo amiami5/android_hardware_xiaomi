@@ -17,12 +17,12 @@ class UdfpsHandler {
   public:
     virtual ~UdfpsHandler() = default;
 
-    virtual void init(fingerprint_device_t* device) {};
-    virtual void onFingerDown(uint32_t x, uint32_t y, float minor, float major) {};
+    virtual void init(fingerprint_device_t* /*device*/) {};
+    virtual void onFingerDown(uint32_t /*x*/, uint32_t /*y*/, float /*minor*/, float /*major*/) {};
     virtual void onFingerUp() {};
     virtual void onUiReady() {};
 
-    virtual void onAcquired(int32_t result, int32_t vendorCode) {};
+    virtual void onAcquired(int32_t /*result*/, int32_t /*vendorCode*/) {};
     virtual void onAuthenticationSucceeded() {};
     virtual void onAuthenticationFailed() {};
     virtual void cancel() {};
