@@ -76,9 +76,6 @@ class DolbyNotificationListener : NotificationListenerService() {
         if (isEnabled) {
             DolbyConstants.dlog(TAG, "Starting app profile monitoring")
             AppProfileMonitorService.startMonitoring(this)
-        } else {
-            DolbyConstants.dlog(TAG, "Stopping app profile monitoring (disabled)")
-            AppProfileMonitorService.stopMonitoring(this)
         }
     }
 

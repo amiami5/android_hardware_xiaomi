@@ -36,7 +36,6 @@ class AppProfileMonitorService : Service() {
     private var pendingSwitchRunnable: Runnable? = null
     private var hasOriginalProfile = false
     private var lastProfileChangeTime: Long = 0
-    private var isInitialized = false
 
     private val checkForegroundAppRunnable = object : Runnable {
         override fun run() {
@@ -49,76 +48,59 @@ class AppProfileMonitorService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        val prefs = getSharedPreferences("dolby_prefs", Context.MODE_PRIVATE)
-        val monitoringEnabled = prefs.getBoolean("app_profile_monitoring_enabled", false)
-        if (!monitoringEnabled) {
-            DolbyConstants.dlog(TAG, "Service created but monitoring is disabled")
-            stopSelf()
-            return
-        }
-        
-        try {
-            appProfileManager = AppProfileManager(this)
-            dolbyRepository = DolbyRepository(this)
-            audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            isInitialized = true
-            
-            val savedProfile = prefs.getString(DolbyConstants.PREF_PROFILE, "0")?.toIntOrNull() ?: 0
-            
-            if (!hasOriginalProfile) {
-                originalProfile = savedProfile
-                hasOriginalProfile = true
-                DolbyConstants.dlog(TAG, "Service created - saved original profile: $originalProfile")
-            } else {
-                DolbyConstants.dlog(TAG, "Service created - keeping existing original profile: $originalProfile")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to initialize service", e)
-            stopSelf()
-        }
+        appProfileManager = AppProfileManager(this)
+        dolbyRepository = DolbyRepository(this)
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!isInitialized) {
-            DolbyConstants.dlog(TAG, "Service not initialized, stopping")
-            stopSelf()
-            return START_NOT_STICKY
-        }
-        
         when (intent?.action) {
-            ACTION_START_MONITORING -> startMonitoring()
+            ACTION_START_MONITORING -> {
+                captureOriginalProfile()
+                startMonitoring()
+            }
             ACTION_STOP_MONITORING -> stopMonitoring()
+            else -> {
+                val prefs = getSharedPreferences("dolby_prefs", Context.MODE_PRIVATE)
+                if (prefs.getBoolean(PREF_MONITORING_ENABLED, false)) {
+                    captureOriginalProfile()
+                    startMonitoring()
+                } else {
+                    stopSelf()
+                }
+            }
         }
         return START_STICKY
     }
 
-    private fun startMonitoring() {
-        if (!isInitialized) {
-            DolbyConstants.dlog(TAG, "Cannot start monitoring - service not initialized")
-            return
+    private fun captureOriginalProfile() {
+        if (hasOriginalProfile) return
+
+        val prefs = getSharedPreferences("dolby_prefs", Context.MODE_PRIVATE)
+        val persisted = prefs.getInt(PREF_ORIGINAL_PROFILE, -1)
+        if (persisted >= 0) {
+            originalProfile = persisted
+            DolbyConstants.dlog(TAG, "Recovered original profile from prefs: $originalProfile")
+        } else {
+            originalProfile = prefs.getString(DolbyConstants.PREF_PROFILE, "0")?.toIntOrNull() ?: 0
+            prefs.edit().putInt(PREF_ORIGINAL_PROFILE, originalProfile).apply()
+            DolbyConstants.dlog(TAG, "Captured original profile: $originalProfile")
         }
-        
+        hasOriginalProfile = true
+    }
+
+    private fun startMonitoring() {
         if (!isMonitoring) {
             isMonitoring = true
-            
-            if (!hasOriginalProfile) {
-                val prefs = getSharedPreferences("dolby_prefs", Context.MODE_PRIVATE)
-                originalProfile = prefs.getString(DolbyConstants.PREF_PROFILE, "0")?.toIntOrNull() ?: 0
-                hasOriginalProfile = true
-                DolbyConstants.dlog(TAG, "Re-initialized original profile on start: $originalProfile")
-            }
-            
             DolbyConstants.dlog(TAG, "Started monitoring foreground app (original profile: $originalProfile)")
             handler.post(checkForegroundAppRunnable)
         }
     }
 
     private fun stopMonitoring() {
-        if (!isInitialized) {
-            DolbyConstants.dlog(TAG, "Cannot stop monitoring - service not initialized")
-            return
-        }
-        
+        getSharedPreferences("dolby_prefs", Context.MODE_PRIVATE)
+            .edit().remove(PREF_ORIGINAL_PROFILE).apply()
+
         if (isMonitoring) {
             isMonitoring = false
             handler.removeCallbacks(checkForegroundAppRunnable)
@@ -128,13 +110,11 @@ class AppProfileMonitorService : Service() {
                 pendingSwitchRunnable = null
             }
             
-            val prefs = getSharedPreferences("dolby_prefs", Context.MODE_PRIVATE)
-            val wasMonitoringEnabled = prefs.getBoolean("app_profile_monitoring_enabled", false)
-            
-            if (wasMonitoringEnabled && hasOriginalProfile && originalProfile >= 0) {
+            if (hasOriginalProfile && originalProfile >= 0) {
                 DolbyConstants.dlog(TAG, "Restoring original profile: $originalProfile")
                 dolbyRepository.setCurrentProfile(originalProfile)
                 
+                val prefs = getSharedPreferences("dolby_prefs", Context.MODE_PRIVATE)
                 val currentProfile = prefs.getString(DolbyConstants.PREF_PROFILE, "0")?.toIntOrNull() ?: 0
                 if (currentProfile != originalProfile) {
                     DolbyConstants.dlog(TAG, "WARNING: Profile restoration mismatch! Expected: $originalProfile, Got: $currentProfile")
@@ -142,7 +122,7 @@ class AppProfileMonitorService : Service() {
                     DolbyConstants.dlog(TAG, "Profile restored successfully")
                 }
             } else {
-                DolbyConstants.dlog(TAG, "Skipping profile restoration (monitoring was not enabled or no valid original profile)")
+                DolbyConstants.dlog(TAG, "No valid original profile to restore (hasOriginal=$hasOriginalProfile, profile=$originalProfile)")
             }
             
             DolbyConstants.dlog(TAG, "Stopped monitoring foreground app")
@@ -150,8 +130,6 @@ class AppProfileMonitorService : Service() {
     }
 
     private fun isHeadphoneConnected(): Boolean {
-        if (!isInitialized) return false
-        
         return try {
             val devices = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
             devices.any { device ->
@@ -170,19 +148,8 @@ class AppProfileMonitorService : Service() {
     }
 
     private fun checkForegroundApp() {
-        if (!isInitialized) {
-            DolbyConstants.dlog(TAG, "Service not initialized, skipping foreground app check")
-            return
-        }
-        
         try {
             val prefs = getSharedPreferences("dolby_prefs", Context.MODE_PRIVATE)
-            val isMonitoringEnabled = prefs.getBoolean("app_profile_monitoring_enabled", false)
-            if (!isMonitoringEnabled) {
-                DolbyConstants.dlog(TAG, "Monitoring disabled, skipping foreground app check")
-                return
-            }
-            
             val headphoneOnlyMode = prefs.getBoolean("app_profile_headphone_only", false)
             
             if (headphoneOnlyMode && !isHeadphoneConnected()) {
@@ -259,8 +226,6 @@ class AppProfileMonitorService : Service() {
     }
 
     private fun getForegroundPackage(): String? {
-        if (!isInitialized) return null
-        
         val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         val currentTime = System.currentTimeMillis()
         
@@ -305,21 +270,19 @@ class AppProfileMonitorService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         DolbyConstants.dlog(TAG, "Service destroyed")
-        
-        if (isInitialized) {
-            stopMonitoring()
-            dolbyRepository.close()
-        }
-        
+        stopMonitoring()
+        dolbyRepository.close()
         hasOriginalProfile = false
-        isInitialized = false
     }
 
     companion object {
         private const val TAG = "AppProfileMonitor"
         private const val CHECK_INTERVAL = 2000L
         private const val SWITCH_DELAY = 300L
-        
+
+        private const val PREF_MONITORING_ENABLED = "app_profile_monitoring_enabled"
+        private const val PREF_ORIGINAL_PROFILE = "app_profile_original_profile"
+
         const val ACTION_START_MONITORING = "org.lunaris.dolby.START_MONITORING"
         const val ACTION_STOP_MONITORING = "org.lunaris.dolby.STOP_MONITORING"
 
